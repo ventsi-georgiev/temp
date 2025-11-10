@@ -149,7 +149,7 @@ carthage update --use-xcframeworks
 ```swift
 // 1) Backend returns these values to the mobile client after BE-to-BE calls:
 let accessToken = AccessToken.test(value: "<ACCESS_TOKEN_FROM_BACKEND>")
-let paymentModel = CardPaymentModel(paymentId: "<PAYMENT_INTENT_ID_FROM_BACKEND>", /* other fields */)
+let paymentModel = CardPaymentModel(paymentIntentId: "<PAYMENT_INTENT_ID_FROM_BACKEND>", /* other fields */)
 
 // 2) Build the payment request payload
 let cardRequestPayload = PaymentRequestPayload(
@@ -335,7 +335,7 @@ case threeDsChallengeFlowFailed
 - `.computopUnprocessableEntity(ComputopUnprocessableEntity)` - the server understood the request but could not process it (business-rule or validation constraint). The object typically contains:
     - `description`: why the entity could not be processed.
     - `code`: an internal error code useful for logging and support.
-    - `paymentId`: the identifier of the related payment (for correlation and investigation).
+    - `paymentIntentId`: the identifier of the related payment intent (for correlation and investigation).
 - `requestFailed(Error)` - a transport or networking-level error. Treat as transient unless the underlying error indicates otherwise.
 - `threeDsInitializationFailed`, `threeDsChallengeRuntimeError`, `threeDsChallengeFlowFailed` - errors related to the EMV 3-D Secure / challenge flow. These require special attention (see notes below).
 
@@ -360,12 +360,12 @@ if let result = await paymentRequestReceiver?.success(cardRequestPayload) {
 
 **Best practices for error handling**
 - **Show user-friendly messages.** Never display raw error objects to end users. Map technical errors to short, actionable messages.  
-- **Log full error details server-side** (error objects, `code`, `paymentId`, stack/underlying `Error`) for diagnostics and support.  
+- **Log full error details server-side** (error objects, `code`, `paymentIntentId`, stack/underlying `Error`) for diagnostics and support.  
 - **Map field errors to inputs.** For `.computopBadRequest`, surface the `field`/`error` next to the corresponding input field to guide the user.  
 - **Retry transient errors.** Apply exponential backoff for network-related `requestFailed(Error)` errors.  
-- **Distinguish client vs server issues.** For `500` / `internalServerError`, escalate to backend/support with `paymentId`.  
+- **Distinguish client vs server issues.** For `500` / `internalServerError`, escalate to backend/support with `paymentIntentId`.  
 - **Treat 3DS errors carefully.** Challenge-flow failures may need retries, alternate flows, or merchant-side investigation (BankID / 3DS provider).  
-- **Avoid sensitive logging on client.** Never persist full card data or tokens in logs; store only identifiers (e.g., `paymentId`) and non-sensitive error details.
+- **Avoid sensitive logging on client.** Never persist full card data or tokens in logs; store only identifiers (e.g., `paymentIntentId`) and non-sensitive error details.
 
 ---
 
