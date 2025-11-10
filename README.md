@@ -103,7 +103,7 @@ carthage update --use-xcframeworks
 ---
 
 ## Backend Setup & Mobile Flow
-**Important:** The Computop Mobile SDK does **not** require any special client-side initialization with long-lived merchant credentials. Instead, sensitive operations (creating the payment intent and obtaining OAuth access tokens) must be performed on your backend (server-to-server). The mobile app receives short-lived tokens from the backend and uses them to confirm the payment via the SDK.
+**Important:** The Nexi Paygate iOS SDK does **not** require any special client-side initialization with long-lived merchant credentials. Instead, sensitive operations (creating the payment intent and obtaining OAuth access tokens) must be performed on your backend (server-to-server). The mobile app receives short-lived tokens from the backend and uses them to confirm the payment via the SDK.
 
 ### What the backend must do (Back End → Back End)
 
