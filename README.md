@@ -1,33 +1,47 @@
+TODO insert badges
+
 # Nexi Paygate iOS SDK
 
 ## Table of Contents
+
 1. [What is Nexi Paygate iOS SDK](#what-is-nexi-paygate-ios-sdk)
 2. [Technical Overview](#technical-overview)
-3. [Installation](#installation)
-    - [Swift Package Manager](#swift-package-manager)
-    - [CocoaPods](#cocoapods)
-    - [Carthage](#carthage)
-4. [Backend Setup & Mobile Flow](#backend-setup--mobile-flow)
-5. [Supported Payment Methods](#supported-payment-methods)
-    - [Card payments](#card-payments)
-    - [Digital Wallets](#digital-wallets)
-    - [3D Secure](#3d-secure)
-6. [Integration Examples](#integration-examples)   
-    - [Basic Flow](#basic-flow)
-    - [Advanced Flow](#advanced-flow)
+3. [Supported Payment Methods](#supported-payment-methods)
+   - [Card Payments](#card-payments)
+     - [3D Secure](#3d-secure)
+   - [Digital Wallets](#digital-wallets)
+4. [Installation](#installation)
+   - [Swift Package Manager](#swift-package-manager)
+   - [CocoaPods](#cocoapods)
+   - [Carthage](#carthage)
+5. [Backend Setup & Mobile Flow](#backend-setup--mobile-flow)
+   - [Flow Diagram (High-Level)](#flow-diagram-high-level)
+   - [What the Backend Must Do (Back End → Back End)](#what-the-backend-must-do-back-end--back-end)
+   - [What the Mobile App Must Do (Front End)](#what-the-mobile-app-must-do-front-end)
+6. [Integration Guidelines](#integration-guidelines)  
+   - [Common Integration Steps (For All Payment Methods)](#common-integration-steps-for-all-payment-methods)  
+   - [Card Payments](#card-payments)
+     - [Card Entry UI Setup](#card-entry-ui-setup)  
+       - [CardPayment Object](#cardpayment-object)  
+       - [Card Details Entry View](#card-details-entry-view)
+     - [Using the SDK in a UIKit Application](#using-the-sdk-in-a-uikit-application)
+     - [Implementation Example](#implementation-example)
+     - [Advanced Flow](#advanced-flow)  
+     - [UI Customization](#ui-customization)  
+     - [Co-badged Cards Support](#co-badged-cards-support)
+   - [Apple Pay](#apple-pay)
+     - [Setup and Configuration](#setup-and-configuration)
+       - [Implementation Example](#implementation-example)
 7. [Handling Results and Errors](#handling-results-and-errors)
-8. [UI Customization](#ui-customization)
-9. [Testing](#testing)
-10. [FAQ](#faq)
-11. [Resources and Contacts](#resources-and-contacts)
+8. [Testing](#testing)
+9. [FAQ](#faq)
+10. [Resources and Contacts](#resources-and-contacts)
 
 ---
 
 ## What is Nexi Paygate iOS SDK
 Nexi Paygate SDK is a native library that allows merchants to integrate secure and seamless payment processing into their iOS applications.  
 It simplifies PCI DSS compliance, reduces integration complexity, and supports multiple payment methods. Merchants can process payments directly within their app, providing a smooth checkout experience for their customers.
-
----
 
 **Key benefits**
 - Reduces the PCI compliance burden by encapsulating card data handling.
@@ -47,9 +61,28 @@ The SDK provides a set of Swift types and views to collect card data, validate i
 - Swift 5.7 or later
 
 ---
+## Supported Payment Methods
+
+### Card Payments
+Supported schemes:
+- Visa
+- Mastercard
+- American Express
+- Diners
+- Discover
+- JCB
+- Maestro
+
+#### 3D Secure
+The SDK integrates EMV 3-D Secure flows natively, supporting both frictionless authentication and challenge scenarios.
+
+### Digital Wallets
+- Apple Pay
+
+---
 
 ## Installation
-You can add the SDK to your project using your preferred dependency manager — [Swift Package Manager](https://swift.org/package-manager/), [CocoaPods](http://cocoapods.org), or [Carthage](https://github.com/Carthage/Carthage), ensuring easy setup and updates.
+You can add the SDK to your project using your preferred dependency manager - [Swift Package Manager](https://swift.org/package-manager/), [CocoaPods](http://cocoapods.org), or [Carthage](https://github.com/Carthage/Carthage), ensuring easy setup and updates.
 
 ### Swift Package Manager
 To integrate the SDK using Swift Package Manager, follow these steps:
@@ -103,7 +136,18 @@ carthage update --use-xcframeworks
 ---
 
 ## Backend Setup & Mobile Flow
+
 **Important:** The Nexi Paygate iOS SDK does **not** require any special client-side initialization with long-lived merchant credentials. Instead, sensitive operations (creating the payment intent and obtaining OAuth access tokens) must be performed on your backend (server-to-server). The mobile app receives short-lived tokens from the backend and uses them to confirm the payment via the SDK.
+
+### Flow diagram (high-level)
+```
+Merchant Backend (BE) → Paygate Authentication (client credentials) → returns access_token
+Merchant Backend (BE) → Create Payment Intent → returns payment_intent_id
+Merchant Backend (BE) → Paygate Authentication (grant_type = payment_intents) → returns access_token
+Mobile App ← payment_intent_id, access_token (from Merchant BE)
+Mobile App (collect card data) → Nexi Paygate iOS SDK (confirm using payment_intent_id + access_token) → Paygate (confirm payment)
+Nexi Paygate iOS SDK → Mobile App (ProcessResult: success / cancellation / failure)
+```
 
 ### What the backend must do (Back End → Back End)
 
@@ -126,6 +170,28 @@ carthage update --use-xcframeworks
 
 ### What the mobile app must do (Front End)
 
+The mobile app's flow is a two-part process. First, it performs steps common to all payments (like getting credentials from your Back end). Second, it performs steps that are specific to the payment method the user has selected.
+
+---
+
+## Integration guidelines
+
+### Common integration steps (For all payment methods)
+
+No matter what payment method is used, the mobile app must always:
+
+1. Receive Credentials from the Backend:
+    - payment_intent_id
+    - access_token (short-lived OAuth token)
+
+2. Handle the Final Result:
+    - After the SDK is triggered, it will return a ProcessResult (.success, .cancellation, or .failure).
+    - Your app is responsible for interpreting this result and showing the appropriate "success" or "failure" message             to the user (see Handling Results and Errors).
+
+### Card Payments
+
+This is the flow when the user chooses to pay with a new card.
+
 1. **Collect card data**  
    - Use the SDK UI (`CmtCard.cardDetailsEntry(...)`) or your custom UI with the SDK’s validation helpers.
 
@@ -144,7 +210,68 @@ carthage update --use-xcframeworks
    - The SDK returns the transaction result: `success`, `cancellation`, or `failure`.  
    - Card data is automatically cleared from the UI once the transaction completes.
 
-### Client-side example
+#### Card Entry UI Setup
+
+To handle card payments in your app, you need two components:
+- A `CardPayment` object  
+- The Card Details Entry view
+
+##### CardPayment object
+
+You can create an instance of `CardPayment` in two ways:
+- **With default `MerchantPreferences`**:
+```swift
+var cardPayment = CmtCard.cardPayment()
+```
+
+- **With custom `MerchantPreferences`**:
+```swift
+var cardPayment = CmtCard.cardPayment(with: merchantPreferences)
+```
+
+##### Card Details Entry view
+
+The SDK provides a `@ViewBuilder` function returning the Card Details View. Example (SwiftUI):
+```swift
+CmtCard.cardDetailsEntry(
+    for: cardPayment,
+    shouldShowSaveCardToggle: payment.isTokenizationEnabled,
+    onFormAction: { formAction in
+        switch formAction {
+        case .completion(isComplete: let isComplete):
+            // Use this to enable/disable your Pay button
+            break
+        case .selection:
+            // Handle selection changes if needed
+            break
+        }
+    }
+)
+```
+
+**Parameters**
+
+- `cardPayment: Binding<CardPayment>` - binding to your `CardPayment` object  
+- `shouldShowSaveCardToggle: Bool` - shows a toggle to save the user's card (for credential-on-file/tokenization) 
+- `onFormAction: @escaping (FormEvent) -> Void` - closure triggered on selection or validation status changes; use it to control Pay button state or select payment methods  
+
+**Fields & Validation**
+
+The Card Details View contains four fields with separate validation rules:
+
+- Card Number  
+- Expiry Date  
+- Secure Code (CVV)  
+- Cardholder Name  
+
+The user is automatically moved to the next field after entering correct information. The card scheme is detected dynamically during number entry.  
+
+<img src="./Resources/CardView.gif" alt="CardView GIF" width="50%">
+
+#### Using the SDK in a UIKit Application
+TODO
+
+#### Implementation Example
 
 ```swift
 // 1) Backend returns these values to the mobile client after BE-to-BE calls:
@@ -168,137 +295,73 @@ Task {
 }
 ```
 
-### Flow diagram (high-level)
-```
-Merchant Backend (BE) → Paygate Authentication (client credentials) → returns access_token
-Merchant Backend (BE) → Create Payment Intent → returns payment_intent_id
-Merchant Backend (BE) → Paygate Authentication (grant_type = payment_intents) → returns access_token
-Mobile App ← payment_intent_id, access_token (from Merchant BE)
-Mobile App (collect card data) → Nexi Paygate iOS SDK (confirm using payment_intent_id + access_token) → Paygate (confirm payment)
-Nexi Paygate iOS SDK → Mobile App (ProcessResult: success / cancellation / failure)
-```
-
----
-
-## Supported Payment Methods
-
-### Card Payments
-Supported schemes:
-- Visa
-- Mastercard
-- American Express
-- Diners
-- Discover
-- JCB
-- Maestro
-
-### 3D Secure
-The SDK integrates EMV 3-D Secure flows natively, supporting both frictionless authentication and challenge scenarios.
-
-### Digital Wallets
-- Apple Pay
-
----
-
-# Integration Examples
-
-To handle card payments in your app, you need two components:
-
-- A `CardPayment` object  
-- The Card Details Entry view
-
----
-
-### CardPayment object
-
-You can create an instance of `CardPayment` in two ways:
-
-- **With default `MerchantPreferences`**:
-
-```swift
-var cardPayment = CmtCard.cardPayment()
-```
-
-- **With custom `MerchantPreferences`**:
-
-```swift
-var cardPayment = CmtCard.cardPayment(with: merchantPreferences)
-```
-
----
-
-### Card Details Entry view
-
-The SDK provides a `@ViewBuilder` function returning the Card Details View. Example (SwiftUI):
-
-```swift
-CmtCard.cardDetailsEntry(
-    for: cardPayment,
-    shouldShowSaveCardToggle: payment.isTokenizationEnabled,
-    onFormAction: { formAction in
-        switch formAction {
-        case .completion(isComplete: let isComplete):
-            // Use this to enable/disable your Pay button
-            break
-        case .selection:
-            // Handle selection changes if needed
-            break
-        }
-    }
-)
-```
-
-**Parameters**
-
-- `cardPayment: Binding<CardPayment>` — binding to your `CardPayment` object  
-- `shouldShowSaveCardToggle: Bool` — shows a toggle to save the user's card (for credential-on-file/tokenization) 
-- `onFormAction: @escaping (FormEvent) -> Void` — closure triggered on selection or validation status changes; use it to control Pay button state or select payment methods  
-
-**Fields & Validation**
-
-The Card Details View contains four fields with separate validation rules:
-
-- Card Number  
-- Expiry Date  
-- Secure Code (CVV)  
-- Cardholder Name  
-
-The user is automatically moved to the next field after entering correct information. The card scheme is detected dynamically during number entry.  
-
-![CardView GIF](./Resources/CardView.gif)
-
----
-
-### Basic Flow
-
-When you have card data and an authenticated access token, create a `PaymentRequestPayload` and hand it to the SDK payment request receiver:
-
-```swift
-let cardRequestPayload = PaymentRequestPayload(
-    accessToken: <ACCESS_TOKEN>,
-    cardPaymentModel: <PAYMENT_REQUEST_MODEL>
-)
-
-let paymentRequestReceiver = cardPayment.obtainPaymentRequestReceiver()
-
-Task {
-    let status = await paymentRequestReceiver?.success(cardRequestPayload)
-}
-```
-
-If the payload cannot be created, call failure on the receiver:
-
-```swift
-paymentRequestReceiver?.failure()
-```
-
-### Advanced Flow
+#### Advanced Flow
 
 Advanced scenarios include:
 
 - **Enabling tokenization (save-card toggle)** and handling credential-on-file post-processing. See the [Nexi Paygate credential-on-file documentation](https://developer.computop.com/display/DE/credentialOnFile) for merchant-side token usage and lifecycle.  
 - **Observe `CardPayment.status`** to drive UI state (for example, enable/disable the Pay button based on form completeness or network state).  
 - **Integrate with your backend** to process MIT (Merchant-Initiated Transaction) payments directly via Paygate (server-side).
+
+#### UI Customization
+
+The card entry view supports **dark** and **light** modes by default. You can localize language resources or provide a custom implementation of `CardViewLanguage` if needed.
+
+##### Language
+
+**Supported languages**
+- English
+- Danish
+- Finnish
+- Norwegian
+- Swedish
+- German
+- Automatic (detects system locale when available)
+
+```swift
+// Set a built-in language
+CmtCard.language = DefaultCardViewLanguage.english
+
+// Or provide a custom implementation conforming to CardViewLanguage:
+CmtCard.cardViewLanguage = MyCustomCardViewLanguage()
+```
+> Tip: prefer `cardViewLanguage` for complete control over localized strings; use `language` for quick built-in selections.
+
+#### Co-badged cards support
+
+When a co‑branded card (Visa/Dankort) is detected, an additional picker appears in the card entry UI allowing the user to select the desired scheme.
+
+<img src="./Resources/CoBrandedScheme.gif" alt="CoBrandedScheme GIF" width="50%">
+
+---
+
+### Apple Pay 
+
+The SDK simplifies the integration of Apple Pay for in-app payments, reducing the complexity of handling the payment flow.
+
+For a complete guide, please refer to the official documentation: https://developer.computop.com/display/EN/Apple+Pay
+
+#### Setup and Configuration
+Before you can use Apple Pay in your app, you must complete a one-time setup process.
+
+1. Create an Apple Merchant ID: In your Apple Developer account, create a new Merchant Identifier.
+
+2. Contact Helpdesk for CSR: Contact the Computop Helpdesk with your new Apple Merchant ID. They will generate and provide you with a Certificate Signing Request (CSR) file.
+
+3. Create Payment Processing Certificate: In your Apple Developer account, use the CSR file from the Helpdesk to generate a Payment Processing Certificate. Download this certificate.
+
+4. Enable Apple Pay in Xcode: In your project's "Signing & Capabilities" tab, add the "Apple Pay" capability and select the Merchant ID you created.
+
+#### Implementation Example
+Once your configuration is complete, you can integrate the Apple Pay flow using the SDK.
+
+##### Initialize the SDK
+
+TODO
+
+##### Trigger the Payment
+
+TODO
 
 ---
 
@@ -347,9 +410,9 @@ See Nexi Paygate error codes for the full list and detailed definitions: https:/
 if let result = await paymentRequestReceiver?.success(cardRequestPayload) {
     switch result {
     case .success(let paymentData):
-        // Payment succeeded — update UI and notify backend
+        // Payment succeeded - update UI and notify backend
     case .cancellation(let paymentData):
-        // User cancelled — reset UI or prompt accordingly
+        // User cancelled - reset UI or prompt accordingly
     case .failure(let error):
         // Map CardProcessError to a user-friendly message and log details
         handleCardProcessError(error)
@@ -369,38 +432,6 @@ if let result = await paymentRequestReceiver?.success(cardRequestPayload) {
 
 ---
 
-## UI Customization
-
-The card entry view supports **dark** and **light** modes by default. You can localize language resources or provide a custom implementation of `CardViewLanguage` if needed.
-
-### Language
-
-**Supported languages**
-- English
-- Danish
-- Finnish
-- Norwegian
-- Swedish
-- German
-- Automatic (detects system locale when available)
-
-```swift
-// Set a built-in language
-CmtCard.language = DefaultCardViewLanguage.english
-
-// Or provide a custom implementation conforming to CardViewLanguage:
-CmtCard.cardViewLanguage = MyCustomCardViewLanguage()
-```
-> Tip: prefer `cardViewLanguage` for complete control over localized strings; use `language` for quick built-in selections.
-
-### Co‑badged Visa / Dankort support
-
-When a co‑branded card (Visa/Dankort) is detected, an additional picker appears in the card entry UI allowing the user to select the desired scheme.
-
-![CoBrandedScheme GIF](./Resources/CoBrandedScheme.gif)
-
----
-
 ## Testing
 Use `AccessToken.test(value:)` to indicate Test environment in the `PaymentRequestPayload`:
 
@@ -412,16 +443,16 @@ public enum AccessToken {
 ```
 
 **Test card numbers** (Test Environment):
-- **MasterCard** — PAN: `5424180000000171` — Scenario: AUTHENTICATED_APPLICATION_FRICTIONLESS
-- **MasterCard** — PAN: `5424180011113336` — Scenario: AUTHENTICATED_APPLICATION_CHALLENGE
-- **VISA** — PAN: `4005571702222222` — Scenario: AUTHENTICATED_APPLICATION_FRICTIONLESS
-- **VISA** — PAN: `4571994016713039` — Scenario: AUTHENTICATED_APPLICATION_CHALLENGE
+- **MasterCard** - PAN: `5424180000000171` - Scenario: AUTHENTICATED_APPLICATION_FRICTIONLESS
+- **MasterCard** - PAN: `5424180011113336` - Scenario: AUTHENTICATED_APPLICATION_CHALLENGE
+- **VISA** - PAN: `4005571702222222` - Scenario: AUTHENTICATED_APPLICATION_FRICTIONLESS
+- **VISA** - PAN: `4571994016713039` - Scenario: AUTHENTICATED_APPLICATION_CHALLENGE
 
 ---
 
 ## FAQ
 **Q: Does the SDK support tokenization (credential-on-file)?**  
-A: Yes — the SDK supports displaying a save-card toggle and obtaining tokenization data. Actual COF/token lifecycle (storage, reuse) is handled by merchant/backend using Nexi Paygate token APIs.
+A: Yes - the SDK supports displaying a save-card toggle and obtaining tokenization data. Actual COF/token lifecycle (storage, reuse) is handled by merchant/backend using Nexi Paygate token APIs.
 
 **Q: Which payment methods are supported?**  
 A: Card payments and Apple Pay
@@ -435,8 +466,8 @@ A: Credentials (merchantId, API key) and test tokens are provided by Nexi. Conta
 ---
 
 ## Resources and Contacts
-- Demo app: `???????????????????`  
-- Developer portal: ``???????????????????``  
+- Developer portal: https://developer.computop.com/
+- REST API Reference: https://computop-docs.redocly.app/
 - Support / Helpdesk: [helpdesk@computop.com](mailto:helpdesk@computop.com)  
 
 ---
